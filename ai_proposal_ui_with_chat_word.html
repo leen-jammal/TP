@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Proposal Generator + Chat</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #11182d;
+      --text: #e5ecff;
+      --muted: #9fb0d9;
+      --primary: #5b8cff;
+      --primary-2: #7aa2ff;
+      --border: rgba(255,255,255,0.08);
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --shadow: 0 20px 40px rgba(0,0,0,0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(91,140,255,0.22), transparent 28%),
+        radial-gradient(circle at top right, rgba(34,197,94,0.12), transparent 20%),
+        linear-gradient(180deg, #0a0f1f 0%, #0d1429 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .badge {
+      white-space: nowrap;
+      background: rgba(91,140,255,0.14);
+      color: #dce7ff;
+      border: 1px solid rgba(122,162,255,0.28);
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .right-column {
+      display: grid;
+      gap: 20px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 18px 20px 0;
+    }
+
+    .card-header h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .card-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .card-body {
+      padding: 18px 20px 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    textarea,
+    input,
+    select {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.10);
+      outline: none;
+      background: rgba(8,12,24,0.72);
+      color: var(--text);
+      padding: 14px 15px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    textarea {
+      min-height: 360px;
+      resize: vertical;
+    }
+
+    input,
+    select {
+      min-height: 48px;
+    }
+
+    textarea:focus,
+    input:focus,
+    select:focus {
+      border-color: rgba(122,162,255,0.5);
+      box-shadow: 0 0 0 3px rgba(91,140,255,0.18);
+    }
+
+    .chat-textarea {
+      min-height: 130px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover:not(:disabled) { transform: translateY(-1px); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-2); }
+    .btn-dark { background: #0f172a; color: white; border: 1px solid rgba(255,255,255,0.08); }
+    .btn-ghost { background: rgba(255,255,255,0.08); color: var(--text); }
+    .btn-success { background: var(--success); color: white; }
+
+    .meta {
+      margin-top: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .status-box {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .status-row:last-child { margin-bottom: 0; }
+
+    .status-label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status-value {
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .status-ready { color: #dbeafe; }
+    .status-working { color: #fde68a; }
+    .status-success { color: #86efac; }
+    .status-error { color: #fca5a5; }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #5b8cff, #80a8ff);
+      border-radius: 999px;
+      transition: width 0.25s ease;
+    }
+
+    .preview-card .card-body {
+      padding-top: 14px;
+    }
+
+    .preview-toolbar,
+    .chat-toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .preview-toolbar .left,
+    .preview-toolbar .right,
+    .chat-toolbar .left,
+    .chat-toolbar .right {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .preview-frame-wrap {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      background: white;
+      min-height: 840px;
+    }
+
+    iframe {
+      width: 100%;
+      height: 840px;
+      border: none;
+      background: white;
+    }
+
+    .mini-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .webhook {
+      font-family: monospace;
+      font-size: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 12px;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .info-pill {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .info-pill .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .info-pill .value {
+      font-size: 14px;
+      font-weight: bold;
+      word-break: break-word;
+    }
+
+    .chat-output {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      min-height: 180px;
+    }
+
+    .answer-text {
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chip {
+      background: rgba(91,140,255,0.14);
+      color: #dce7ff;
+      border: 1px solid rgba(122,162,255,0.20);
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 16px 0;
+    }
+
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+      .container { padding: 20px; }
+    }
+
+    @media (max-width: 980px) {
+      textarea { min-height: 260px; }
+      iframe { height: 680px; }
+      .info-grid { grid-template-columns: 1fr; }
+      .hero { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <div>
+        <h1>AI Technical Proposal Generator</h1>
+        <p>Send requirements to your n8n generation workflow, preview the generated proposal, then ask grounded questions about the proposal through the chat workflow.</p>
+      </div>
+      <div class="badge">Generator + Proposal Chat UI</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-header">
+          <h2>Input</h2>
+          <p>Paste the customer requirements exactly as you want them sent to the workflow.</p>
+        </div>
+        <div class="card-body">
+          <label for="requirements">Customer Requirements</label>
+          <textarea id="requirements"></textarea>
+
+          <div class="toolbar">
+            <button id="generateBtn" class="btn-primary" type="button">Generate</button>
+            <button id="regenerateBtn" class="btn-dark" type="button">Regenerate</button>
+            <button id="clearBtn" class="btn-ghost" type="button">Clear</button>
+          </div>
+
+          <div class="meta">
+            <div class="status-box">
+              <div class="status-row">
+                <span class="status-label">Status</span>
+                <span id="statusText" class="status-value status-ready">Ready</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">Progress</span>
+                <span id="progressText" class="status-value">0%</span>
+              </div>
+              <div class="progress">
+                <div id="progressBar" class="progress-bar"></div>
+              </div>
+            </div>
+
+            <div class="status-box">
+              <div class="status-label" style="margin-bottom:8px;">Generation Webhook</div>
+              <div class="webhook" id="generateWebhookText">http://localhost:5678/webhook-test/ai-proposal</div>
+              <div class="status-label" style="margin-bottom:8px; margin-top:14px;">Chat Webhook</div>
+              <div class="webhook" id="chatWebhookText">http://localhost:5678/webhook-test/proposal-chat</div>
+              <div class="status-label" style="margin-bottom:8px; margin-top:14px;">Word Webhook</div>
+              <div class="webhook" id="docxWebhookText">http://localhost:5678/webhook-test/proposal-docx</div>
+            </div>
+
+            <div class="mini-note">
+              Open this page through a local server such as <code>http://localhost:5500</code>, not directly through <code>file://</code>. If your workflows are Active, use <code>/webhook/...</code> instead of <code>/webhook-test/...</code>. The generate workflow should return <code>html</code> and <code>chat_package</code>. The Word workflow should accept <code>final_document</code> and return <code>docx_base64</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-column">
+        <div class="card preview-card">
+          <div class="card-header">
+            <h2>Preview</h2>
+            <p>After generation, the HTML proposal will appear here.</p>
+          </div>
+          <div class="card-body">
+            <div class="preview-toolbar">
+              <div class="left">
+                <button id="downloadPdfBtn" class="btn-success" type="button" disabled>Print / Save as PDF</button>
+                <button id="downloadHtmlBtn" class="btn-dark" type="button" disabled>Download HTML</button>
+                <button id="downloadWordBtn" class="btn-dark" type="button" disabled>Download Word</button>
+              </div>
+              <div class="right mini-note">
+                Generated file name: <strong>report</strong>
+              </div>
+            </div>
+
+            <div class="preview-frame-wrap">
+              <iframe id="previewFrame"></iframe>
+            </div>
+
+            <div class="info-grid">
+              <div class="info-pill">
+                <div class="label">Document Title</div>
+                <div id="docTitle" class="value">—</div>
+              </div>
+              <div class="info-pill">
+                <div class="label">Sections</div>
+                <div id="docSectionsCount" class="value">0</div>
+              </div>
+              <div class="info-pill">
+                <div class="label">Chat Package</div>
+                <div id="chatPackageState" class="value">Not ready</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Proposal Chat</h2>
+            <p>Ask grounded questions about the generated proposal using the returned chat package.</p>
+          </div>
+          <div class="card-body">
+            <div class="chat-toolbar">
+              <div class="left mini-note">The chat stays disabled until a proposal is generated successfully.</div>
+            </div>
+
+            <label for="currentSection">Current Section (optional)</label>
+            <input id="currentSection" type="text" placeholder="Example: Solution Design" />
+
+            <div style="height: 14px;"></div>
+
+            <label for="chatQuestion">Question</label>
+            <textarea id="chatQuestion" class="chat-textarea" placeholder="Example: Why was this design chosen?"></textarea>
+
+            <div class="toolbar">
+              <button id="askBtn" class="btn-primary" type="button" disabled>Ask</button>
+              <button id="summarizeDocBtn" class="btn-dark" type="button" disabled>Summarize Document</button>
+              <button id="explainSectionBtn" class="btn-ghost" type="button" disabled>Explain This Section</button>
+              <button id="listAssumptionsBtn" class="btn-ghost" type="button" disabled>List Assumptions</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="chat-output">
+              <div class="status-row">
+                <span class="status-label">Chat Status</span>
+                <span id="chatStatusText" class="status-value status-ready">Ready</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">Answer Type</span>
+                <span id="chatAnswerType" class="status-value">—</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">Confidence</span>
+                <span id="chatConfidence" class="status-value">—</span>
+              </div>
+
+              <div class="divider"></div>
+
+              <div id="chatAnswer" class="answer-text">No question asked yet.</div>
+
+              <div id="relevantSectionsWrap" class="chip-row"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GENERATE_WEBHOOK_URL = "https://n8n.dftech.dev/workflow/9FTGX5vfdxmCswQlXJq_B";
+    const CHAT_WEBHOOK_URL = "https://n8n.dftech.dev/workflow/HmEdzUzqmR8ekKhXPWG6T";
+    const DOCX_WEBHOOK_URL = "https://n8n.dftech.dev/workflow/L83FmA_yH6DT1E9yrCtaF?projectId=kFkGT7dyKMYK8dVS&uiContext=workflow_list";
+
+    const requirementsEl = document.getElementById("requirements");
+    const generateBtn = document.getElementById("generateBtn");
+    const regenerateBtn = document.getElementById("regenerateBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const downloadPdfBtn = document.getElementById("downloadPdfBtn");
+    const downloadHtmlBtn = document.getElementById("downloadHtmlBtn");
+    const downloadWordBtn = document.getElementById("downloadWordBtn");
+    const previewFrame = document.getElementById("previewFrame");
+    const statusText = document.getElementById("statusText");
+    const progressText = document.getElementById("progressText");
+    const progressBar = document.getElementById("progressBar");
+    const generateWebhookText = document.getElementById("generateWebhookText");
+    const chatWebhookText = document.getElementById("chatWebhookText");
+    const docxWebhookText = document.getElementById("docxWebhookText");
+
+    const docTitleEl = document.getElementById("docTitle");
+    const docSectionsCountEl = document.getElementById("docSectionsCount");
+    const chatPackageStateEl = document.getElementById("chatPackageState");
+
+    const currentSectionEl = document.getElementById("currentSection");
+    const chatQuestionEl = document.getElementById("chatQuestion");
+    const askBtn = document.getElementById("askBtn");
+    const summarizeDocBtn = document.getElementById("summarizeDocBtn");
+    const explainSectionBtn = document.getElementById("explainSectionBtn");
+    const listAssumptionsBtn = document.getElementById("listAssumptionsBtn");
+    const chatAnswerEl = document.getElementById("chatAnswer");
+    const chatStatusText = document.getElementById("chatStatusText");
+    const chatAnswerTypeEl = document.getElementById("chatAnswerType");
+    const chatConfidenceEl = document.getElementById("chatConfidence");
+    const relevantSectionsWrap = document.getElementById("relevantSectionsWrap");
+
+    let generatedHtml = "";
+    let finalDocument = null;
+    let chatPackage = null;
+    let generatedDocxBase64 = "";
+    let generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
+    let progressTimer = null;
+
+    generateWebhookText.textContent = GENERATE_WEBHOOK_URL;
+    chatWebhookText.textContent = CHAT_WEBHOOK_URL;
+    docxWebhookText.textContent = DOCX_WEBHOOK_URL;
+
+    function setStatus(text, type = "ready") {
+      statusText.textContent = text;
+      statusText.className = `status-value status-${type}`;
+    }
+
+    function setChatStatus(text, type = "ready") {
+      chatStatusText.textContent = text;
+      chatStatusText.className = `status-value status-${type}`;
+    }
+
+    function setProgress(value) {
+      const safeValue = Math.max(0, Math.min(100, Math.round(value)));
+      progressBar.style.width = `${safeValue}%`;
+      progressText.textContent = `${safeValue}%`;
+    }
+
+    function startFakeProgress() {
+      clearInterval(progressTimer);
+      let value = 6;
+      setProgress(value);
+      progressTimer = setInterval(() => {
+        if (value < 88) {
+          value += Math.random() * 8;
+          setProgress(value);
+        }
+      }, 450);
+    }
+
+    function stopFakeProgress(success = true) {
+      clearInterval(progressTimer);
+      setProgress(success ? 100 : 0);
+    }
+
+    function setBusy(isBusy) {
+      generateBtn.disabled = isBusy;
+      regenerateBtn.disabled = isBusy;
+      clearBtn.disabled = isBusy;
+      downloadPdfBtn.disabled = isBusy || !generatedHtml;
+      downloadHtmlBtn.disabled = isBusy || !generatedHtml;
+      downloadWordBtn.disabled = isBusy || !finalDocument;
+      const chatDisabled = isBusy || !chatPackage;
+      askBtn.disabled = chatDisabled;
+      summarizeDocBtn.disabled = chatDisabled;
+      explainSectionBtn.disabled = chatDisabled;
+      listAssumptionsBtn.disabled = chatDisabled;
+    }
+
+    function resetDocumentMeta() {
+      docTitleEl.textContent = "—";
+      docSectionsCountEl.textContent = "0";
+      chatPackageStateEl.textContent = "Not ready";
+    }
+
+    function updateDocumentMeta() {
+      docTitleEl.textContent = finalDocument?.title || chatPackage?.title || "Untitled";
+      const count = Array.isArray(chatPackage?.sections)
+        ? chatPackage.sections.length
+        : Array.isArray(finalDocument?.sections)
+          ? finalDocument.sections.length
+          : 0;
+      docSectionsCountEl.textContent = String(count);
+      chatPackageStateEl.textContent = chatPackage ? "Ready" : "Missing";
+    }
+
+    function resetChatOutput() {
+      setChatStatus("Ready", "ready");
+      chatAnswerTypeEl.textContent = "—";
+      chatConfidenceEl.textContent = "—";
+      chatAnswerEl.textContent = "No question asked yet.";
+      relevantSectionsWrap.innerHTML = "";
+    }
+
+    function renderRelevantSections(sections = []) {
+      relevantSectionsWrap.innerHTML = "";
+      if (!Array.isArray(sections) || !sections.length) return;
+      sections.forEach((section) => {
+        const chip = document.createElement("div");
+        chip.className = "chip";
+        chip.textContent = section;
+        relevantSectionsWrap.appendChild(chip);
+      });
+    }
+
+    function downloadBlob(content, filename, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function callWorkflow() {
+      const requirements = requirementsEl.value.trim();
+
+      if (!requirements) {
+        alert("Please enter the requirements first.");
+        return;
+      }
+
+      setBusy(true);
+      setStatus("Generating...", "working");
+      setChatStatus("Waiting for proposal", "ready");
+      startFakeProgress();
+
+      try {
+        const response = await fetch(GENERATE_WEBHOOK_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ requirements })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status} - ${response.statusText}\n${errorText}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.html || !String(data.html).trim()) {
+          throw new Error("Workflow returned empty html");
+        }
+
+        generatedHtml = data.html;
+        finalDocument = data.final_document || null;
+        chatPackage = data.chat_package || null;
+        generatedDocxBase64 = "";
+        generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
+
+        previewFrame.srcdoc = generatedHtml;
+        updateDocumentMeta();
+
+        stopFakeProgress(true);
+        setStatus("Completed", "success");
+        setChatStatus(chatPackage ? "Chat ready" : "Chat package missing", chatPackage ? "success" : "error");
+        downloadPdfBtn.disabled = false;
+        downloadHtmlBtn.disabled = false;
+
+        if (!chatPackage) {
+          chatAnswerEl.textContent = "The proposal was generated, but chat_package was not returned. Update /ai-proposal to return html + final_document + chat_package.";
+        }
+      } catch (error) {
+        console.error(error);
+        generatedHtml = "";
+        finalDocument = null;
+        chatPackage = null;
+        generatedDocxBase64 = "";
+        generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
+        previewFrame.srcdoc = "";
+        stopFakeProgress(false);
+        setStatus("Failed", "error");
+        setChatStatus("Unavailable", "error");
+        resetDocumentMeta();
+        resetChatOutput();
+        alert("Workflow call failed:\n" + error.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function askProposalChat(questionOverride = "") {
+      if (!chatPackage) {
+        alert("Generate a proposal first.");
+        return;
+      }
+
+      const question = (questionOverride || chatQuestionEl.value || "").trim();
+      const current_section = currentSectionEl.value.trim();
+
+      if (!question) {
+        alert("Please enter a question first.");
+        return;
+      }
+
+      askBtn.disabled = true;
+      summarizeDocBtn.disabled = true;
+      explainSectionBtn.disabled = true;
+      listAssumptionsBtn.disabled = true;
+      setChatStatus("Thinking...", "working");
+      chatAnswerTypeEl.textContent = "—";
+      chatConfidenceEl.textContent = "—";
+      chatAnswerEl.textContent = "Thinking...";
+      relevantSectionsWrap.innerHTML = "";
+
+      try {
+        const response = await fetch(CHAT_WEBHOOK_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            question,
+            current_section,
+            chat_package: chatPackage
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status} - ${response.statusText}\n${errorText}`);
+        }
+
+        const data = await response.json();
+
+        chatAnswerEl.textContent = data.answer || "No answer returned.";
+        chatAnswerTypeEl.textContent = data.answer_type || "—";
+        chatConfidenceEl.textContent = data.confidence || "—";
+        renderRelevantSections(data.relevant_sections || []);
+        setChatStatus("Completed", "success");
+      } catch (error) {
+        console.error(error);
+        chatAnswerEl.textContent = "Chat request failed: " + error.message;
+        chatAnswerTypeEl.textContent = "error";
+        chatConfidenceEl.textContent = "low";
+        setChatStatus("Failed", "error");
+      } finally {
+        askBtn.disabled = !chatPackage;
+        summarizeDocBtn.disabled = !chatPackage;
+        explainSectionBtn.disabled = !chatPackage;
+        listAssumptionsBtn.disabled = !chatPackage;
+      }
+    }
+
+    function downloadPdf() {
+      if (!generatedHtml) {
+        alert("Generate a proposal first.");
+        return;
+      }
+
+      try {
+        const printWindow = window.open("", "_blank");
+
+        if (!printWindow) {
+          throw new Error("Popup blocked. Please allow popups for this site.");
+        }
+
+        printWindow.document.open();
+        printWindow.document.write(generatedHtml);
+        printWindow.document.close();
+        printWindow.focus();
+
+        setTimeout(() => {
+          printWindow.print();
+        }, 700);
+
+        setStatus("Print dialog opened", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus("PDF failed", "error");
+        alert("PDF conversion failed:\n" + error.message);
+      }
+    }
+
+    function downloadHtml() {
+      if (!generatedHtml) {
+        alert("Generate a proposal first.");
+        return;
+      }
+
+      downloadBlob(generatedHtml, "report.html", "text/html");
+      setStatus("HTML downloaded", "success");
+    }
+
+
+    function base64ToBlob(base64, mimeType) {
+      const byteCharacters = atob(base64);
+      const byteArrays = [];
+
+      for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+        const slice = byteCharacters.slice(offset, offset + 1024);
+        const byteNumbers = new Array(slice.length);
+
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+
+        byteArrays.push(new Uint8Array(byteNumbers));
+      }
+
+      return new Blob(byteArrays, { type: mimeType });
+    }
+
+    async function downloadWord() {
+      if (!finalDocument) {
+        alert("Generate a proposal first.");
+        return;
+      }
+
+      try {
+        downloadWordBtn.disabled = true;
+        setStatus("Preparing Word...", "working");
+
+        const response = await fetch(DOCX_WEBHOOK_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            final_document: finalDocument
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status} - ${response.statusText}
+${errorText}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.docx_base64) {
+          throw new Error("Word workflow did not return docx_base64");
+        }
+
+        generatedDocxBase64 = data.docx_base64;
+        generatedDocxFilename = data.docx_filename || "Digital_Future_Technical_Proposal.docx";
+
+        const blob = base64ToBlob(
+          generatedDocxBase64,
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = generatedDocxFilename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        setStatus("Word downloaded", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus("Word failed", "error");
+ 
+      } finally {
+        downloadWordBtn.disabled = !finalDocument;
+      }
+    }
+
+    function clearAll() {
+      requirementsEl.value = "";
+      generatedHtml = "";
+      finalDocument = null;
+      chatPackage = null;
+      generatedDocxBase64 = "";
+      generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
+      previewFrame.srcdoc = "";
+      setProgress(0);
+      setStatus("Ready", "ready");
+      downloadPdfBtn.disabled = true;
+      downloadHtmlBtn.disabled = true;
+      downloadWordBtn.disabled = true;
+      currentSectionEl.value = "";
+      chatQuestionEl.value = "";
+      resetDocumentMeta();
+      resetChatOutput();
+      setBusy(false);
+    }
+
+    generateBtn.addEventListener("click", callWorkflow);
+    regenerateBtn.addEventListener("click", callWorkflow);
+    clearBtn.addEventListener("click", clearAll);
+    downloadPdfBtn.addEventListener("click", downloadPdf);
+    downloadHtmlBtn.addEventListener("click", downloadHtml);
+    downloadWordBtn.addEventListener("click", downloadWord);
+    askBtn.addEventListener("click", () => askProposalChat());
+    summarizeDocBtn.addEventListener("click", () => askProposalChat("Summarize the full proposal clearly."));
+    explainSectionBtn.addEventListener("click", () => {
+      const sectionName = currentSectionEl.value.trim();
+      if (!sectionName) {
+        alert("Please enter the current section first.");
+        return;
+      }
+      askProposalChat(`Explain the section \"${sectionName}\" clearly.`);
+    });
+    listAssumptionsBtn.addEventListener("click", () => askProposalChat("What are the key assumptions in this proposal?"));
+
+    resetDocumentMeta();
+    resetChatOutput();
+
+    requirementsEl.value = `Customer Requirements
+
+Key aspects of the requirements have been identified by RAFED team, and the engagement will be composed of the following main areas:
+
+- Create new cloud-based landing zones in KSA-based datacenter as per best practices and compliance to host all RAFED future workloads and applications.
+
+- Deploy the following environments to host RAFED’s workload:
+  - Shared services environment acting as a hub and hosting next-generation FortiGate firewall.
+  - Production and staging environment hosting GKE cluster for production and staging workloads.
+  - UAT environment hosting GKE cluster for testing workloads.
+  - Workload environment hosting future workloads such as Exchange.
+
+- High availability, security, reliability, and scalability must be ensured.
+- Business continuity and data protection must be implemented.
+- Use containerization for flexibility and portability.
+- Implement monitoring and operational tools for health checks, performance analysis, and automated backups.
+- Ensure data privacy and integrity using encryption and secure communication protocols.
+- Support a growing user base and workload with dynamic scaling.
+- Enable automated deployments using GitLab CI/CD pipelines.
+- The platform must support up to 3 million students and 50,000 vehicles with dynamic scaling capabilities.`;
+
+    console.log("UI loaded successfully");
+  </script>
+</body>
+</html>
