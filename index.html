@@ -117,8 +117,7 @@
     }
 
     textarea,
-    input,
-    select {
+    input {
       width: 100%;
       border-radius: 14px;
       border: 1px solid rgba(255,255,255,0.10);
@@ -135,14 +134,12 @@
       resize: vertical;
     }
 
-    input,
-    select {
+    input {
       min-height: 48px;
     }
 
     textarea:focus,
-    input:focus,
-    select:focus {
+    input:focus {
       border-color: rgba(122,162,255,0.5);
       box-shadow: 0 0 0 3px rgba(91,140,255,0.18);
     }
@@ -367,9 +364,9 @@
     <div class="hero">
       <div>
         <h1>AI Technical Proposal Generator</h1>
-        <p>Send requirements to your n8n generation workflow, preview the generated proposal, then ask grounded questions about the proposal through the chat workflow.</p>
+        <p>Send requirements to your async n8n generation workflow, preview the generated proposal, then ask grounded questions about the proposal through the chat workflow.</p>
       </div>
-      <div class="badge">Generator + Proposal Chat UI</div>
+      <div class="badge">Async Generator + Proposal Chat UI</div>
     </div>
 
     <div class="grid">
@@ -404,16 +401,18 @@
             </div>
 
             <div class="status-box">
-              <div class="status-label" style="margin-bottom:8px;">Generation Webhook</div>
-              <div class="webhook" id="generateWebhookText">http://localhost:5678/webhook-test/ai-proposal</div>
+              <div class="status-label" style="margin-bottom:8px;">Start Webhook</div>
+              <div class="webhook" id="startWebhookText"></div>
+
+              <div class="status-label" style="margin-bottom:8px; margin-top:14px;">Status Webhook</div>
+              <div class="webhook" id="statusWebhookText"></div>
+
               <div class="status-label" style="margin-bottom:8px; margin-top:14px;">Chat Webhook</div>
-              <div class="webhook" id="chatWebhookText">http://localhost:5678/webhook-test/proposal-chat</div>
-              <div class="status-label" style="margin-bottom:8px; margin-top:14px;">Word Webhook</div>
-              <div class="webhook" id="docxWebhookText">http://localhost:5678/webhook-test/proposal-docx</div>
+              <div class="webhook" id="chatWebhookText"></div>
             </div>
 
             <div class="mini-note">
-              Open this page through a local server such as <code>http://localhost:5500</code>, not directly through <code>file://</code>. If your workflows are Active, use <code>/webhook/...</code> instead of <code>/webhook-test/...</code>. The generate workflow should return <code>html</code> and <code>chat_package</code>. The Word workflow should accept <code>final_document</code> and return <code>docx_base64</code>.
+              This UI uses async start + polling. The generate workflow should return <code>job_id</code> quickly, then the status workflow should later return <code>html</code>, <code>final_document</code>, and <code>chat_package</code>.
             </div>
           </div>
         </div>
@@ -433,7 +432,7 @@
                 <button id="downloadWordBtn" class="btn-dark" type="button" disabled>Download Word</button>
               </div>
               <div class="right mini-note">
-                Generated file name: <strong>report</strong>
+                File name: <strong>Digital_Future_Technical_Proposal</strong>
               </div>
             </div>
 
@@ -502,7 +501,6 @@
               <div class="divider"></div>
 
               <div id="chatAnswer" class="answer-text">No question asked yet.</div>
-
               <div id="relevantSectionsWrap" class="chip-row"></div>
             </div>
           </div>
@@ -511,10 +509,14 @@
     </div>
   </div>
 
+  <!-- DOCX + FileSaver -->
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
   <script>
-    const GENERATE_WEBHOOK_URL = "https://n8n.dftech.dev/webhook/ai-proposal-v3-20260404";
+    const START_WEBHOOK_URL = "https://n8n.dftech.dev/webhook/ai-proposal-v3-20260404f";
+    const STATUS_WEBHOOK_URL = "https://n8n.dftech.dev/webhook/ai-proposal-status-v1";
     const CHAT_WEBHOOK_URL = "https://n8n.dftech.dev/webhook/proposal-chat";
-    const DOCX_WEBHOOK_URL = "https://n8n.dftech.dev/webhook/proposal-docx";
 
     const requirementsEl = document.getElementById("requirements");
     const generateBtn = document.getElementById("generateBtn");
@@ -527,9 +529,9 @@
     const statusText = document.getElementById("statusText");
     const progressText = document.getElementById("progressText");
     const progressBar = document.getElementById("progressBar");
-    const generateWebhookText = document.getElementById("generateWebhookText");
+    const startWebhookText = document.getElementById("startWebhookText");
+    const statusWebhookText = document.getElementById("statusWebhookText");
     const chatWebhookText = document.getElementById("chatWebhookText");
-    const docxWebhookText = document.getElementById("docxWebhookText");
 
     const docTitleEl = document.getElementById("docTitle");
     const docSectionsCountEl = document.getElementById("docSectionsCount");
@@ -550,13 +552,16 @@
     let generatedHtml = "";
     let finalDocument = null;
     let chatPackage = null;
-    let generatedDocxBase64 = "";
-    let generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
-    let progressTimer = null;
+    let currentJobId = null;
 
-    generateWebhookText.textContent = GENERATE_WEBHOOK_URL;
+    let pollingTimer = null;
+    let simulatedProgressTimer = null;
+    let simulatedProgress = 0;
+    let backendProgress = 0;
+
+    startWebhookText.textContent = START_WEBHOOK_URL;
+    statusWebhookText.textContent = STATUS_WEBHOOK_URL;
     chatWebhookText.textContent = CHAT_WEBHOOK_URL;
-    docxWebhookText.textContent = DOCX_WEBHOOK_URL;
 
     function setStatus(text, type = "ready") {
       statusText.textContent = text;
@@ -574,21 +579,37 @@
       progressText.textContent = `${safeValue}%`;
     }
 
-    function startFakeProgress() {
-      clearInterval(progressTimer);
-      let value = 6;
-      setProgress(value);
-      progressTimer = setInterval(() => {
-        if (value < 88) {
-          value += Math.random() * 8;
-          setProgress(value);
-        }
-      }, 450);
+    function updateVisibleProgress() {
+      if (statusText.textContent === "Completed") {
+        setProgress(100);
+        return;
+      }
+      const visible = Math.min(92, Math.max(simulatedProgress, backendProgress));
+      setProgress(visible);
     }
 
-    function stopFakeProgress(success = true) {
-      clearInterval(progressTimer);
-      setProgress(success ? 100 : 0);
+    function startSimulatedProgress() {
+      clearInterval(simulatedProgressTimer);
+      simulatedProgress = 5;
+      updateVisibleProgress();
+
+      simulatedProgressTimer = setInterval(() => {
+        if (simulatedProgress < 92) {
+          simulatedProgress += 4;
+          if (simulatedProgress > 92) simulatedProgress = 92;
+          updateVisibleProgress();
+        }
+      }, 60000);
+    }
+
+    function stopSimulatedProgress() {
+      clearInterval(simulatedProgressTimer);
+      simulatedProgressTimer = null;
+    }
+
+    function stopPolling() {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
     }
 
     function setBusy(isBusy) {
@@ -612,12 +633,8 @@
     }
 
     function updateDocumentMeta() {
-      docTitleEl.textContent = finalDocument?.title || chatPackage?.title || "Untitled";
-      const count = Array.isArray(chatPackage?.sections)
-        ? chatPackage.sections.length
-        : Array.isArray(finalDocument?.sections)
-          ? finalDocument.sections.length
-          : 0;
+      docTitleEl.textContent = finalDocument?.title || "Untitled";
+      const count = Array.isArray(finalDocument?.sections) ? finalDocument.sections.length : 0;
       docSectionsCountEl.textContent = String(count);
       chatPackageStateEl.textContent = chatPackage ? "Ready" : "Missing";
     }
@@ -653,25 +670,105 @@
       URL.revokeObjectURL(url);
     }
 
+    async function pollStatusOnce() {
+      if (!currentJobId) return;
+
+      try {
+        const response = await fetch(STATUS_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ job_id: currentJobId })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status} - ${response.statusText}\n${errorText}`);
+        }
+
+        const data = await response.json();
+
+        backendProgress = Number(data.progress || 0);
+        updateVisibleProgress();
+
+        if (data.status === "completed") {
+          stopPolling();
+          stopSimulatedProgress();
+
+          generatedHtml = data.html || "";
+          finalDocument = data.final_document || null;
+          chatPackage = data.chat_package || null;
+
+          previewFrame.srcdoc = generatedHtml;
+          updateDocumentMeta();
+
+          setStatus("Completed", "success");
+          setProgress(100);
+          setBusy(false);
+
+          setChatStatus(chatPackage ? "Chat ready" : "Chat package missing", chatPackage ? "success" : "error");
+          return;
+        }
+
+        if (data.status === "failed") {
+          stopPolling();
+          stopSimulatedProgress();
+
+          generatedHtml = "";
+          finalDocument = null;
+          chatPackage = null;
+          previewFrame.srcdoc = "";
+
+          setStatus("Failed", "error");
+          setProgress(0);
+          setBusy(false);
+          setChatStatus("Unavailable", "error");
+          resetDocumentMeta();
+          resetChatOutput();
+          alert("Generation failed:\n" + (data.error || "Unknown backend error"));
+          return;
+        }
+
+        setStatus("Generating...", "working");
+      } catch (error) {
+        console.error("Polling error:", error);
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      pollingTimer = setInterval(pollStatusOnce, 5000);
+    }
+
     async function callWorkflow() {
       const requirements = requirementsEl.value.trim();
-
       if (!requirements) {
         alert("Please enter the requirements first.");
         return;
       }
 
+      stopPolling();
+      stopSimulatedProgress();
+
+      generatedHtml = "";
+      finalDocument = null;
+      chatPackage = null;
+      currentJobId = null;
+      backendProgress = 0;
+      simulatedProgress = 5;
+      previewFrame.srcdoc = "";
+      resetDocumentMeta();
+      resetChatOutput();
+
       setBusy(true);
       setStatus("Generating...", "working");
       setChatStatus("Waiting for proposal", "ready");
-      startFakeProgress();
+      updateVisibleProgress();
+      startSimulatedProgress();
 
       try {
-        const response = await fetch(GENERATE_WEBHOOK_URL, {
+        const response = await fetch(START_WEBHOOK_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requirements })
         });
 
@@ -682,44 +779,29 @@
 
         const data = await response.json();
 
-        if (!data.html || !String(data.html).trim()) {
-          throw new Error("Workflow returned empty html");
+        if (!data.job_id) {
+          throw new Error("Start workflow did not return job_id");
         }
 
-        generatedHtml = data.html;
-        finalDocument = data.final_document || null;
-        chatPackage = data.chat_package || null;
-        generatedDocxBase64 = "";
-        generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
-
-        previewFrame.srcdoc = generatedHtml;
-        updateDocumentMeta();
-
-        stopFakeProgress(true);
-        setStatus("Completed", "success");
-        setChatStatus(chatPackage ? "Chat ready" : "Chat package missing", chatPackage ? "success" : "error");
-        downloadPdfBtn.disabled = false;
-        downloadHtmlBtn.disabled = false;
-
-        if (!chatPackage) {
-          chatAnswerEl.textContent = "The proposal was generated, but chat_package was not returned. Update /ai-proposal to return html + final_document + chat_package.";
-        }
+        currentJobId = data.job_id;
+        startPolling();
+        await pollStatusOnce();
       } catch (error) {
         console.error(error);
+        stopPolling();
+        stopSimulatedProgress();
         generatedHtml = "";
         finalDocument = null;
         chatPackage = null;
-        generatedDocxBase64 = "";
-        generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
+        currentJobId = null;
         previewFrame.srcdoc = "";
-        stopFakeProgress(false);
         setStatus("Failed", "error");
+        setProgress(0);
         setChatStatus("Unavailable", "error");
         resetDocumentMeta();
         resetChatOutput();
-        alert("Workflow call failed:\n" + error.message);
-      } finally {
         setBusy(false);
+        alert("Workflow call failed:\n" + error.message);
       }
     }
 
@@ -750,9 +832,7 @@
       try {
         const response = await fetch(CHAT_WEBHOOK_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question,
             current_section,
@@ -794,10 +874,7 @@
 
       try {
         const printWindow = window.open("", "_blank");
-
-        if (!printWindow) {
-          throw new Error("Popup blocked. Please allow popups for this site.");
-        }
+        if (!printWindow) throw new Error("Popup blocked. Please allow popups for this site.");
 
         printWindow.document.open();
         printWindow.document.write(generatedHtml);
@@ -822,27 +899,53 @@
         return;
       }
 
-      downloadBlob(generatedHtml, "report.html", "text/html");
+      downloadBlob(generatedHtml, "Digital_Future_Technical_Proposal.html", "text/html");
       setStatus("HTML downloaded", "success");
     }
 
+    function normalizeText(v) {
+      if (v == null) return "";
+      if (typeof v === "string") return v;
+      return JSON.stringify(v, null, 2);
+    }
 
-    function base64ToBlob(base64, mimeType) {
-      const byteCharacters = atob(base64);
-      const byteArrays = [];
-
-      for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
-        const slice = byteCharacters.slice(offset, offset + 1024);
-        const byteNumbers = new Array(slice.length);
-
-        for (let i = 0; i < slice.length; i++) {
-          byteNumbers[i] = slice.charCodeAt(i);
-        }
-
-        byteArrays.push(new Uint8Array(byteNumbers));
+    function buildSectionParagraphs(docx, content) {
+      const text = normalizeText(content);
+      if (!text.trim()) {
+        return [new docx.Paragraph({ text: "" })];
       }
 
-      return new Blob(byteArrays, { type: mimeType });
+      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+      const paragraphs = [];
+
+      for (const line of lines) {
+        if (/^[-•*]\s+/.test(line)) {
+          paragraphs.push(
+            new docx.Paragraph({
+              text: line.replace(/^[-•*]\s+/, ""),
+              bullet: { level: 0 },
+              spacing: { after: 120 }
+            })
+          );
+        } else if (/^\d+[.)]\s+/.test(line)) {
+          paragraphs.push(
+            new docx.Paragraph({
+              text: line.replace(/^\d+[.)]\s+/, ""),
+              bullet: { level: 0 },
+              spacing: { after: 120 }
+            })
+          );
+        } else {
+          paragraphs.push(
+            new docx.Paragraph({
+              children: [new docx.TextRun({ text: line })],
+              spacing: { after: 120 }
+            })
+          );
+        }
+      }
+
+      return paragraphs.length ? paragraphs : [new docx.Paragraph({ text: "" })];
     }
 
     async function downloadWord() {
@@ -855,62 +958,93 @@
         downloadWordBtn.disabled = true;
         setStatus("Preparing Word...", "working");
 
-        const response = await fetch(DOCX_WEBHOOK_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            final_document: finalDocument
+        const title = finalDocument.title || "Digital Future Technical Proposal";
+        const sections = Array.isArray(finalDocument.sections) ? finalDocument.sections : [];
+        const toc = Array.isArray(finalDocument.toc) ? finalDocument.toc : [];
+
+        const children = [];
+
+        children.push(
+          new docx.Paragraph({
+            text: title,
+            heading: docx.HeadingLevel.TITLE,
+            spacing: { after: 300 }
           })
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status} - ${response.statusText}
-${errorText}`);
-        }
-
-        const data = await response.json();
-
-        if (!data.docx_base64) {
-          throw new Error("Word workflow did not return docx_base64");
-        }
-
-        generatedDocxBase64 = data.docx_base64;
-        generatedDocxFilename = data.docx_filename || "Digital_Future_Technical_Proposal.docx";
-
-        const blob = base64ToBlob(
-          generatedDocxBase64,
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         );
 
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = generatedDocxFilename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        children.push(
+          new docx.Paragraph({
+            children: [new docx.TextRun({ text: "Technical Proposal", italics: true })],
+            spacing: { after: 400 }
+          })
+        );
 
+        if (toc.length) {
+          children.push(
+            new docx.Paragraph({
+              text: "Table of Contents",
+              heading: docx.HeadingLevel.HEADING_1,
+              spacing: { before: 200, after: 200 }
+            })
+          );
+
+          toc.forEach((item) => {
+            children.push(
+              new docx.Paragraph({
+                text: String(item),
+                spacing: { after: 100 }
+              })
+            );
+          });
+        }
+
+        sections.forEach((section, index) => {
+          const titleText = section.title || section.heading || `Section ${index + 1}`;
+
+          children.push(
+            new docx.Paragraph({
+              text: `${index + 1}. ${titleText}`,
+              heading: docx.HeadingLevel.HEADING_1,
+              spacing: { before: 300, after: 180 }
+            })
+          );
+
+          const paragraphs = buildSectionParagraphs(docx, section.content);
+          children.push(...paragraphs);
+        });
+
+        const doc = new docx.Document({
+          sections: [
+            {
+              properties: {},
+              children
+            }
+          ]
+        });
+
+        const blob = await docx.Packer.toBlob(doc);
+        saveAs(blob, "Digital_Future_Technical_Proposal.docx");
         setStatus("Word downloaded", "success");
       } catch (error) {
         console.error(error);
         setStatus("Word failed", "error");
- 
+        alert("Word generation failed:\n" + error.message);
       } finally {
         downloadWordBtn.disabled = !finalDocument;
       }
     }
 
     function clearAll() {
+      stopPolling();
+      stopSimulatedProgress();
+
       requirementsEl.value = "";
       generatedHtml = "";
       finalDocument = null;
       chatPackage = null;
-      generatedDocxBase64 = "";
-      generatedDocxFilename = "Digital_Future_Technical_Proposal.docx";
+      currentJobId = null;
+      backendProgress = 0;
+      simulatedProgress = 0;
       previewFrame.srcdoc = "";
       setProgress(0);
       setStatus("Ready", "ready");
@@ -938,7 +1072,7 @@ ${errorText}`);
         alert("Please enter the current section first.");
         return;
       }
-      askProposalChat(`Explain the section \"${sectionName}\" clearly.`);
+      askProposalChat(`Explain the section "${sectionName}" clearly.`);
     });
     listAssumptionsBtn.addEventListener("click", () => askProposalChat("What are the key assumptions in this proposal?"));
 
@@ -966,7 +1100,7 @@ Key aspects of the requirements have been identified by RAFED team, and the enga
 - Enable automated deployments using GitLab CI/CD pipelines.
 - The platform must support up to 3 million students and 50,000 vehicles with dynamic scaling capabilities.`;
 
-    console.log("UI loaded successfully");
+    console.log("Async UI loaded successfully");
   </script>
 </body>
 </html>
